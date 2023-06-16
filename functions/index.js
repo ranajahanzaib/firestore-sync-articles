@@ -1,11 +1,18 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { Storage } = require("@google-cloud/storage");
-const { applyMiddleware, getDocId } = require("./middlewares");
+const {
+  applyMiddleware,
+  getDocId,
+  filenameToDocId,
+  validateFileType,
+  replaceSpecialChars,
+} = require("./middlewares");
 
 admin.initializeApp();
 
 const storage = new Storage();
+const firestore = admin.firestore();
 
 const DEFAULT_COLLECTION_NAME = "unsorted-data";
 
@@ -33,42 +40,6 @@ function createStorageEvent(allowedFolders, callback) {
 }
 
 /**
- * Cloud Function that processes an uploaded JSON file and uploads it to Firestore.
- *
- * @param {string} filePath - The path of the uploaded file.
- * @param {object} object - The object containing information about the uploaded file.
- * @returns {Promise<void>}
- */
-async function handleUploadedFile(filePath, object) {
-  const bucket = storage.bucket(object.bucket);
-  const file = bucket.file(filePath);
-
-  try {
-    const [fileContent] = await file.download();
-    const json = JSON.parse(fileContent.toString());
-
-    // Apply your middleware logic to modify the JSON data as needed
-    const modifiedData = applyMiddleware(json, getDocId);
-
-    const firestore = admin.firestore();
-    const collectionName =
-      getParentFolderName(filePath) || DEFAULT_COLLECTION_NAME;
-    const collectionRef = firestore.collection(collectionName);
-
-    const documentId = modifiedData.firestoreDocId;
-    delete modifiedData.firestoreDocId;
-
-    await collectionRef.doc(documentId).set(modifiedData);
-
-    console.log(
-      `Uploaded modified JSON data from ${filePath} to Firestore collection "${collectionName}"`
-    );
-  } catch (error) {
-    console.error("Error uploading JSON to Firestore:", error);
-  }
-}
-
-/**
  * Helper function to extract the parent folder name from the file path.
  *
  * @param {string} filePath - The path of the file.
@@ -82,7 +53,40 @@ function getParentFolderName(filePath) {
   return parentFolderName;
 }
 
+async function processMarkdownFile(filePath, object) {
+  const bucket = storage.bucket(object.bucket);
+  const file = bucket.file(filePath);
+
+  try {
+    const [fileContent] = await file.download();
+    const markdownContent = fileContent.toString("utf8");
+
+    // Apply the middleware to modify the data object
+    const modifiedData = applyMiddleware(
+      { filePath, content: markdownContent },
+      validateFileType("md"),
+      getDocId,
+      replaceSpecialChars
+      // filenameToDocId
+    );
+
+    // Upload the markdown content to Firestore
+    const collectionName =
+      getParentFolderName(filePath) || DEFAULT_COLLECTION_NAME;
+    const collectionRef = firestore.collection(collectionName);
+    const documentRef = collectionRef.doc(modifiedData.firestoreDocId);
+
+    await documentRef.set({ content: markdownContent });
+
+    console.log(
+      `Uploaded Markdown content from ${filePath} to Firestore collection "${collectionName}" with document ID "${modifiedData.firestoreDocId}".`
+    );
+  } catch (error) {
+    console.error("Error uploading Markdown content:", error);
+  }
+}
+
 exports.handleStorageEvent = createStorageEvent(
-  ["mobiles", "laptops"],
-  handleUploadedFile
+  ["articles", "news"],
+  processMarkdownFile
 );
