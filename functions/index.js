@@ -7,6 +7,7 @@ const {
   filenameToDocId,
   validateFileType,
   replaceSpecialChars,
+  clearFields,
 } = require("./middlewares");
 
 admin.initializeApp();
@@ -26,6 +27,13 @@ const DEFAULT_COLLECTION_NAME = "unsorted-data";
 function createStorageEvent(allowedFolders, callback) {
   return functions.storage.object().onFinalize(async (object) => {
     const filePath = object.name;
+
+    // Check if the filePath refers to a file or a folder
+    if (filePath.endsWith("/")) {
+      console.log(`Skipping folder creation: ${filePath}`);
+      return;
+    }
+
     const parentFolderName = getParentFolderName(filePath);
 
     if (!allowedFolders.includes(parentFolderName)) {
@@ -53,6 +61,13 @@ function getParentFolderName(filePath) {
   return parentFolderName;
 }
 
+/**
+ * Processes an uploaded Markdown file and uploads its content to Firestore.
+ *
+ * @param {string} filePath - The path of the uploaded file.
+ * @param {object} object - The object containing information about the uploaded file.
+ * @returns {Promise<void>} - A promise that resolves when the process is complete.
+ */
 async function processMarkdownFile(filePath, object) {
   const bucket = storage.bucket(object.bucket);
   const file = bucket.file(filePath);
@@ -65,9 +80,8 @@ async function processMarkdownFile(filePath, object) {
     const modifiedData = applyMiddleware(
       { filePath, content: markdownContent },
       validateFileType("md"),
-      getDocId,
-      replaceSpecialChars
-      // filenameToDocId
+      replaceSpecialChars,
+      filenameToDocId
     );
 
     // Upload the markdown content to Firestore
@@ -76,7 +90,9 @@ async function processMarkdownFile(filePath, object) {
     const collectionRef = firestore.collection(collectionName);
     const documentRef = collectionRef.doc(modifiedData.firestoreDocId);
 
-    await documentRef.set({ content: markdownContent });
+    await documentRef.set(
+      applyMiddleware(modifiedData, clearFields("filePath", "firestoreDocId"))
+    );
 
     console.log(
       `Uploaded Markdown content from ${filePath} to Firestore collection "${collectionName}" with document ID "${modifiedData.firestoreDocId}".`

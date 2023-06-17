@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require("uuid"); // Import the uuid package for generating random IDs
+const he = require("he");
 
 /**
  * Applies multiple middleware functions to modify the given data.
@@ -40,7 +41,20 @@ function getDocId(data) {
   return { ...data, firestoreDocId: modifiedDocumentName };
 }
 
+/**
+ * Validates that the file has the expected extension.
+ *
+ * @param {string} expectedExtension - The expected file extension.
+ * @returns {Function} - The middleware function that validates the file extension.
+ */
 function validateFileType(expectedExtension) {
+  /**
+   * Middleware function that validates the file extension.
+   *
+   * @param {object} data - The data object.
+   * @returns {object} - The unmodified data object if the file extension is valid.
+   * @throws {Error} - If the file extension is not valid.
+   */
   return function (data) {
     const filePath = data.filePath;
     const fileExtension = filePath.substring(filePath.lastIndexOf(".") + 1);
@@ -55,6 +69,13 @@ function validateFileType(expectedExtension) {
   };
 }
 
+/**
+ * Generates and returns a unique document ID based on the provided data.
+ *
+ * @param {object} data - The data used to generate the document ID.
+ * @param {string} data.filePath - The file path.
+ * @returns {object} - The modified data object with the generated document ID.
+ */
 function filenameToDocId(data) {
   const filePath = data.filePath;
   const fileName = filePath.split("/").pop();
@@ -64,20 +85,47 @@ function filenameToDocId(data) {
   return { ...data, firestoreDocId: documentId };
 }
 
+/**
+ * Replaces special characters in the content with their corresponding HTML entities.
+ *
+ * @param {object} data - The data object containt the `content` string property.
+ * @returns {object} - The modified data object with the replaced special characters.
+ */
 function replaceSpecialChars(data) {
-  const { content } = data;
-  const modifiedContent = content.replace(/[\n\t]/g, (match) => {
-    switch (match) {
-      case "\n":
-        return "\\n";
-      case "\t":
-        return "\\t";
-      // Add more cases for other special characters if needed
-      default:
-        return match;
-    }
-  });
+  /**
+   * Replaces newline characters with HTML entity "&#10;".
+   * Replaces tab characters with HTML entity "&#9;".
+   * Encodes the content using HTML entities.
+   */
+  let { content } = data;
+  content = content.replace(/\n/g, "&#10;");
+  content = content.replace(/\t/g, "&#9;");
+  const modifiedContent = he.encode(content);
+
+  // Return the modified data object with the replaced special characters
   return { ...data, content: modifiedContent };
+}
+
+/**
+ * Clears specified fields from the data object.
+ *
+ * @param {...string} fields - The fields to be cleared from the data object.
+ * @returns {Function} - The middleware function that clears the specified fields.
+ */
+function clearFields(...fields) {
+  /**
+   * Middleware function that clears specified fields from the data object.
+   *
+   * @param {object} data - The data object.
+   * @returns {object} - The modified data object with the specified fields cleared.
+   */
+  return function (data) {
+    const modifiedData = { ...data };
+    for (const field of fields) {
+      delete modifiedData[field];
+    }
+    return modifiedData;
+  };
 }
 
 module.exports = {
@@ -86,4 +134,5 @@ module.exports = {
   validateFileType,
   filenameToDocId,
   replaceSpecialChars,
+  clearFields,
 };
