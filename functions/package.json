@@ -16,7 +16,7 @@
     "firebase-admin": "^11.8.0",
     "firebase-functions": "^4.3.1",
     "he": "^1.2.0",
-    "uuid": "^9.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"
